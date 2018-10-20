@@ -12,15 +12,17 @@
  *  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
  *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
  *  for the specific language governing permissions and limitations under the License.
- *	
+ *  
  *
- *	Changelog:
+ *  Changelog:
  *
  *  1.0 (06/01/2018) - Initial 1.0 Release. All Temperature, Mode and Fan functions working.
  *  1.1 (06/01/2018) - Allow user to change device icon.
  *  1.2 (07/01/2018) - Fixed issue preventing user from setting desired temperature, added switch and temperature capabilities
  *  1.3 (10/01/2018) - Added support for outside temperature value, 1 minute refresh option (not recommended) and fixed thermostat and switch state reporting when turned off
  *  1.4 (07/06/2018) - Added Fahrenheit support
+ *
+ *  TBD (xx/xx/xxxx) - Adding support for better treatment of hot and cold setpoints by switching modes.
  *
  */
 
@@ -91,6 +93,7 @@ metadata {
         input("ipPort", "string", title:"Daikin WiFi Port (default: 80)", defaultValue:80, required:true, displayDuringSetup:true)
         input("refreshInterval", "enum", title: "Refresh Interval in minutes", defaultValue: "10", required:true, displayDuringSetup:true, options: ["1","5","10","15","30"])
         input("displayFahrenheit", "boolean", title: "Display Fahrenheit", defaultValue: false, displayDuringSetup:true)
+                input("overshootDegrees", "string", title:"Overshoot degrees before mode change (default: 2)", defaultValue:2, required:true)
     }
 
     simulator {
@@ -112,13 +115,13 @@ metadata {
                 [value: 35, color: "#d04e00"],
                 [value: 37, color: "#bc2323"],
                 // Fahrenheit
-				[value: 40, color: "#153591"],
-				[value: 44, color: "#1e9cbb"],
-				[value: 59, color: "#90d2a7"],
-				[value: 74, color: "#44b621"],
-				[value: 82, color: "#f1d801"],
-				[value: 95, color: "#d04e00"],
-				[value: 98, color: "#bc2323"]
+                [value: 40, color: "#153591"],
+                [value: 44, color: "#1e9cbb"],
+                [value: 59, color: "#90d2a7"],
+                [value: 74, color: "#44b621"],
+                [value: 82, color: "#f1d801"],
+                [value: 95, color: "#d04e00"],
+                [value: 98, color: "#bc2323"]
                 ])
             }
 
@@ -126,7 +129,11 @@ metadata {
                 attributeState("default", icon: "https://cdn.rawgit.com/bendews/smartthings-daikin-wifi/master/icons/temp-gauge.png", label:'${currentValue}', defaultState: true)
             }
 
-            tileAttribute("device.targetTemp", key: "SLIDER_CONTROL", range:"(10..40)") {
+            tileAttribute("device.heatingSetpoint", key: "SLIDER_CONTROL", range:"(10..40)") {
+                attributeState "level", action:"setTemperature", defaultState: true
+            }
+
+            tileAttribute("device.coolingSetpoint", key: "SLIDER_CONTROL", range:"(10..40)") {
                 attributeState "level", action:"setTemperature", defaultState: true
             }
         }
@@ -200,13 +207,13 @@ metadata {
                 [value: 35, color: "#d04e00"],
                 [value: 37, color: "#bc2323"],
                 // Fahrenheit
-				[value: 40, color: "#153591"],
-				[value: 44, color: "#1e9cbb"],
-				[value: 59, color: "#90d2a7"],
-				[value: 74, color: "#44b621"],
-				[value: 82, color: "#f1d801"],
-				[value: 95, color: "#d04e00"],
-				[value: 98, color: "#bc2323"]
+                [value: 40, color: "#153591"],
+                [value: 44, color: "#1e9cbb"],
+                [value: 59, color: "#90d2a7"],
+                [value: 74, color: "#44b621"],
+                [value: 82, color: "#f1d801"],
+                [value: 95, color: "#d04e00"],
+                [value: 98, color: "#bc2323"]
                 ])
         }
 
@@ -322,9 +329,25 @@ private updateDaikinDevice(Boolean turnOff = false){
     def fDir = "&f_dir=3"
 
     // Current mode selected in smartthings
-    // If turning unit off, get current mode of unit instead of desired mode
-    String modeAttr = turnOff ? "currMode" : "thermostatMode"
-    def currentMode = device.currentState(modeAttr)?.value
+    def currentMode = "auto"
+    // Special case "auto" to allow different cooling and heating setpoints.
+    if (device.currentState("thermostatMode") == "auto") {
+        switch (device.currentState("thermostatOperatingState")) {
+            case "idle":
+                turnOff = true
+                // fallthrough here is intentional
+            case "heating":
+                currentMode = "heat"
+                break
+            case "cooling":
+                currentMode = "cool"
+                break
+        }
+    } else {
+        // If turning unit off, get current mode of unit instead of desired mode
+        String modeAttr = turnOff ? "currMode" : "thermostatMode"
+        currentMode = device.currentState(modeAttr)?.value
+    }
     // Convert textual mode (e.g "cool") to Daikin Code (e.g "3")
     def currentModeKey = DAIKIN_MODES.find{ it.value == currentMode }?.key
 
@@ -341,6 +364,17 @@ private updateDaikinDevice(Boolean turnOff = false){
     
     // Get target temperature set in Smartthings
     def targetTemp = parseTemp(device.currentValue("targetTemp"), "SET")
+    // If we're in auto, go get the correct setpoint to use.
+    if (device.currentState("thermostatMode") == "auto") {
+        switch (device.currentState("thermostatOperatingState")) {
+            case "heating":
+                targetTemp = device.currentState("heatingSetpoint")
+                break
+            case "cooling":
+                targetTemp = device.currentState("coolingSetpoint")
+                break
+        }
+    }
 
     // Set power mode in HTTP call
     if (turnOff) {
@@ -535,6 +569,40 @@ def parse(String description) {
     return events
 }
 
+private getAutoOperatingState(Double temperature, Double coolingSetpoint, Double heatingSetpoint, Double overshootDegrees, String thermostatState){
+    log.debug "Getting corrected auto state for ${coolingSetpoint} < ${temperature} < ${heatingSetpoint}"
+    log.debug "Overshoot is ${overshootDegrees}"
+    log.debug "Current state is ${thermostatMode}"
+    // TODO(wac): Should check here and elsewherefor overlapping setpoints+overshoot.
+
+    // Simple non-overlapping cases first...
+    if (temperature < heatingSetpoint){
+        return "heating"
+    } else if (temperature > coolingSetpoint){
+        return "cooling"
+    }
+    
+    // If we're between the two setpoints+/-overshoot we set mode to off.
+    if (temperature > heatingSetpoint+overshootDegrees &&
+        temperature < coolingSetpoint-overshootDegrees){
+            return "idle"
+    }
+    
+    // If we're still within the overshoot bounds, we want to keep doing whatever we were doing to avoid ringing between modes.
+    return thermostatState
+}
+
+private getAutoTargetTemp(Double coolingSetpoint, Double heatingSetpoint, String thermostatState){
+    log.debug "Getting target temperature for device."
+    switch(thermostatState) {
+        case "heating":
+            return heatingSetpoint
+        case "cooling":
+            return coolingSetpoint
+    }
+    return null
+}
+
 private updateEvents(Map args){
     log.debug "Executing 'updateEvents' with ${args.mode}, ${args.temperature} and ${args.updateDevice}"
     // Get args with default values
@@ -578,7 +646,20 @@ private updateEvents(Map args){
             events.add(sendEvent(name: "targetTemp", value: temperature))
             break
         case "auto":
-            events.add(sendEvent(name: "statusText", value: "Auto Mode: ${temperature}°", displayed: false))
+            def thermostatOperatingState = getAutoOperatingState(
+                temperature: device.currentValue("temperature"),
+                coolingSetpoint: device.currentValue("coolingSetpoint"),
+                heatingSetpoint: device.currentValue("heatingSetpoint"),
+                overshootDegrees: device.currentValue("overshootDegrees"),
+                thermostatState: device.currentValue("thermostatOperatingState")
+            )
+            temperature = getAutoTargetTemp(
+                coolingSetpoint: device.currentValue("coolingSetpoint"),
+                heatingSetpoint: device.currentValue("heatingSetpoint"),
+                thermostatState: thermostatOperatingState
+            )
+            events.add(sendEvent(name: "statusText", value: "Auto ${thermostatOperatingState} to ${temperature}°", displayed: false))
+            events.add(sendEvent(name: "thermostatOperatingState", value: thermostatOperatingState))
             events.add(sendEvent(name: "targetTemp", value: temperature))
             break
         case "off":
