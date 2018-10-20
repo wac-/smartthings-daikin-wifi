@@ -350,6 +350,7 @@ private updateDaikinDevice(Boolean turnOff = false){
     }
     // Convert textual mode (e.g "cool") to Daikin Code (e.g "3")
     def currentModeKey = DAIKIN_MODES.find{ it.value == currentMode }?.key
+    log.debug "updateDaikinDevice mode ${currentMode} - ${currentModeKey} - ${turnOff}"
 
     // Current fan rate selected in smartthings
     def currentfRate = device.currentState("fanRate")?.value
@@ -375,6 +376,7 @@ private updateDaikinDevice(Boolean turnOff = false){
                 break
         }
     }
+    log.debug "updateDaikinDevice temp ${targetTemp}"
 
     // Set power mode in HTTP call
     if (turnOff) {
@@ -397,6 +399,7 @@ private updateDaikinDevice(Boolean turnOff = false){
         fDir = "&f_dir=${currentfDirKey}"
     }
 
+    log.debug ("/aircon/set_control_info"+pow+mode+sTemp+fRate+fDir+"&shum=0")
     def apiCalls = [
         // Send HTTP Call to update device
         apiGet("/aircon/set_control_info"+pow+mode+sTemp+fRate+fDir+"&shum=0"),
