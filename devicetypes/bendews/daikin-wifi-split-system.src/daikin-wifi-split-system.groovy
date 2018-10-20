@@ -601,17 +601,24 @@ private getAutoOperatingState(Map args){
             return "idle"
     }
     
+    // If current state is null and we're within the overshoot bounds, set mode to off.
+    // This happens after reinitialization.
+    if (thermostatState == null) {
+        return "idle"
+    }
     // If we're still within the overshoot bounds, we want to keep doing whatever we were doing to avoid ringing between modes.
     return thermostatState
 }
 
 private getAutoTargetTemp(Double coolingSetpoint, Double heatingSetpoint, String thermostatState){
-    log.debug "Getting target temperature for device."
+    log.debug "Getting target temperature for device in ${thermostatState}."
     switch(thermostatState) {
         case "heating":
             return heatingSetpoint
         case "cooling":
             return coolingSetpoint
+        case "idle":
+            return heatingSetpoint
     }
     return null
 }
@@ -671,6 +678,7 @@ private updateEvents(Map args){
                 device.currentValue("heatingSetpoint"),
                 thermostatOperatingState
             )
+            log.debug "Auto ${thermostatOperatingState} to ${temperature}"
             events.add(sendEvent(name: "statusText", value: "Auto ${thermostatOperatingState} to ${temperature}°", displayed: false))
             events.add(sendEvent(name: "thermostatOperatingState", value: thermostatOperatingState))
             events.add(sendEvent(name: "targetTemp", value: temperature))
