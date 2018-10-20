@@ -652,16 +652,16 @@ private updateEvents(Map args){
             break
         case "auto":
             def thermostatOperatingState = getAutoOperatingState(
-                temperature: device.currentValue("temperature"),
-                coolingSetpoint: device.currentValue("coolingSetpoint"),
-                heatingSetpoint: device.currentValue("heatingSetpoint"),
-                overshootDegrees: device.currentValue("overshootDegrees"),
-                thermostatState: device.currentValue("thermostatOperatingState")
+                device.currentValue("temperature"),
+                device.currentValue("coolingSetpoint"),
+                device.currentValue("heatingSetpoint"),
+                device.currentValue("overshootDegrees"),
+                device.currentValue("thermostatOperatingState")
             )
             temperature = getAutoTargetTemp(
-                coolingSetpoint: device.currentValue("coolingSetpoint"),
-                heatingSetpoint: device.currentValue("heatingSetpoint"),
-                thermostatState: thermostatOperatingState
+                device.currentValue("coolingSetpoint"),
+                device.currentValue("heatingSetpoint"),
+                thermostatOperatingState
             )
             events.add(sendEvent(name: "statusText", value: "Auto ${thermostatOperatingState} to ${temperature}°", displayed: false))
             events.add(sendEvent(name: "thermostatOperatingState", value: thermostatOperatingState))
