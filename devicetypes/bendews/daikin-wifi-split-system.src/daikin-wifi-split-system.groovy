@@ -513,7 +513,10 @@ def parse(String description) {
         // log.debug "pow: ${devicePower}"
         if (devicePower == "0") {
             turnedOff = true
-            events.add(createEvent(name: "thermostatMode", value: "off"))
+            // Don't clobber if smartthings thinks we're in auto...
+            if (device.currentState("thermostatMode") != "auto") {
+                events.add(createEvent(name: "thermostatMode", value: "off"))
+            }
         }  
     }
     //  Get mode info
@@ -523,7 +526,9 @@ def parse(String description) {
         if (!turnedOff) {
             modeVal = currMode
         }
-        events.add(createEvent(name: "currMode", value: currMode))
+        if (device.currentState("thermostatMode") != "auto") {
+            events.add(createEvent(name: "currMode", value: currMode))
+        }
     }
     //  Get inside temperature sensor info
     if (deviceInsideTempSensor){
