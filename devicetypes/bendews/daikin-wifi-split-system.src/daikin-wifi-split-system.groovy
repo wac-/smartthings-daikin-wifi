@@ -574,7 +574,12 @@ def parse(String description) {
     return events
 }
 
-private getAutoOperatingState(Double temperature, Double coolingSetpoint, Double heatingSetpoint, Double overshootDegrees, String thermostatState){
+private getAutoOperatingState(Map args){
+    def temperature = args.get("temperature")
+    def coolingSetpoint = args.get("coolingSetpoint")
+    def heatingSetpoint = args.get("heatingSetpoint")
+    def overshootDegrees = args.get("overshootDegrees")
+    def thermostatState = args.get("thermostatState")
     log.debug "Getting corrected auto state for ${coolingSetpoint} < ${temperature} < ${heatingSetpoint}"
     log.debug "Overshoot is ${overshootDegrees}"
     log.debug "Current state is ${thermostatMode}"
@@ -655,11 +660,11 @@ private updateEvents(Map args){
             break
         case "auto":
             def thermostatOperatingState = getAutoOperatingState(
-                device.currentValue("temperature"),
-                device.currentValue("coolingSetpoint"),
-                device.currentValue("heatingSetpoint"),
-                device.currentValue("overshootDegrees"),
-                device.currentValue("thermostatOperatingState")
+                temperature: device.currentValue("temperature"),
+                coolingSetpoint: device.currentValue("coolingSetpoint"),
+                heatingSetpoint: device.currentValue("heatingSetpoint"),
+                overshootDegrees: device.currentValue("overshootDegrees"),
+                thermostatState: device.currentValue("thermostatOperatingState")
             )
             temperature = getAutoTargetTemp(
                 device.currentValue("coolingSetpoint"),
