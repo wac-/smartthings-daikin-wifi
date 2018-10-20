@@ -699,7 +699,7 @@ private updateEvents(Map args){
         events.add(sendEvent(name: "switch", value: "on", displayed: false))
     }
 
-    if (updateDevice){
+    if (updateDevice || mode == "auto"){
         updateDaikinDevice(turnOff)
     }
 
