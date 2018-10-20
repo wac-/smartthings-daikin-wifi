@@ -579,6 +579,9 @@ private getAutoOperatingState(Double temperature, Double coolingSetpoint, Double
     log.debug "Overshoot is ${overshootDegrees}"
     log.debug "Current state is ${thermostatMode}"
     // TODO(wac): Should check here and elsewherefor overlapping setpoints+overshoot.
+    if (overshootDegrees == null) {
+        overshootDegrees = 2
+    }
 
     // Simple non-overlapping cases first...
     if (temperature < heatingSetpoint){
